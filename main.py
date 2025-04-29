@@ -14,3 +14,7 @@ print(f"Сходство: {similarity}%")
 choices = ["apple", "banana", "grape"]
 best_match = process.extractOne("appl", choices)
 print(f"Лучший вариант: {best_match}")
+
+# Output:
+# Сходство: 89%
+# Лучший вариант: ('apple', 89)
