@@ -1,33 +1,16 @@
-import re
-from difflib import SequenceMatcher
+pip install fuzzywuzzy
+pip install python-Levenshtein  # Опционально, для ускорения
+from fuzzywuzzy import fuzz
+from fuzzywuzzy import process
 
-def normalize_string(s):
-    # Приведение к нижнему регистру
-    s = s.lower()
-    # Удаление специальных символов и лишних пробелов
-    s = re.sub(r'\b(ооо|г\.|и др\.|и т.д.)\b', '', s)
-    s = re.sub(r'\s+', ' ', s).strip()
-    return s
+str1 = "apple"
+str2 = "appl"
 
-def similarity(s1, s2):
-    return SequenceMatcher(None, s1, s2).ratio()
+# Сравнение двух строк
+similarity = fuzz.ratio(str1, str2)
+print(f"Сходство: {similarity}%")
 
-def find_similar_companies(group_companies, contractors, threshold=0.8):
-    normalized_group = [normalize_string(company) for company in group_companies]
-    normalized_contractors = [normalize_string(contractor) for contractor in contractors]
-
-    matches = {}
-    for contractor in normalized_contractors:
-        for group_company in normalized_group:
-            if similarity(contractor, group_company) >= threshold:
-                matches[contractor] = group_company
-                break  # Выходим из внутреннего цикла, если нашли совпадение
-
-    return matches
-
-# Пример использования
-group_companies = ["ООО Северо-Кавказский Бройлер"]
-contractors = ["Северо кавказский бройлео ООО", "СевероКавказский Бройлер"]
-
-matches = find_similar_companies(group_companies, contractors)
-print(matches)
+# Поиск наиболее похожей строки из списка
+choices = ["apple", "banana", "grape"]
+best_match = process.extractOne("appl", choices)
+print(f"Лучший вариант: {best_match}")
