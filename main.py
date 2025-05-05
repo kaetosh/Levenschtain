@@ -17,12 +17,9 @@ def clean_company_name(company_name):
                     numbers=True ,# Remove all digits 
                     punct=True ,# Remove all punctuations
                     reg=r'\b(ООО|ОАО|АО|ЗАО|ПФ|ПАО|L.L.C|ИП|ТОО|Ltd|Co.)\b', # Remove parts of text based on regex
-                    #reg_replace: str = '<replace_value>', # String to replace the regex used in reg
-                    #stp_lang='english'  # Language for stop words
                     )
     # Удаляем специфические кавычки
     cleaned_name = re.sub(r'[«»]', '', cleaned_name)
-    
     return cleaned_name
 
 # Создаем словарь для хранения результатов
@@ -35,10 +32,8 @@ df_KA['cleaned'] = df_KA['Контрагент'].apply(clean_company_name)
 # Используем process.extract для нахождения совпадений
 for num, cleaned_company in df_GAP['cleaned'].items():
     matches = process.extract(cleaned_company, df_KA['cleaned'], limit=None, scorer=fuzz.ratio)
-    my_list = [df_KA['Контрагент'][_] for i, score, _ in matches if -
-
+    my_list = [df_KA['Контрагент'][_] for i, score, _ in matches if score>90]
     if my_list:  # добавляем только если есть совпадения
-        #my_dict[cleaned_company] = my_list
         my_dict[df_GAP.loc[num, "Компания"]] = my_list
 
 # Печатаем результаты
