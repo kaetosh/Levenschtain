@@ -18,7 +18,7 @@ def clean_company_name(company_name: str) -> str:
                     lowercase=True,  # Приводим к нижнему регистру
                     numbers=True,  # Удаляем все цифры 
                     punct=True,  # Удаляем все знаки препинания
-                    reg=r'\b(ООО|ОАО|АО|ЗАО|ПФ|ПАО|L.L.C|ИП|ТОО|Ltd|Co.)\b',  # Удаляем части текста по regex
+                    reg=r'\b(ООО|ОДО|СОО|КФХ|НКО|ФСК|УК|МУП|ФГБУ|ОАО|АО|ЗАО|ПФ|ПАО|L.L.C|ИП|ТОО|Inc.|GmbH|S.A.|S.R.L.|PLC|SAS|LLC|NV|Ltd|Co.)\b',  # Удаляем части текста по regex
                     )
     # Удаляем специфические кавычки
     cleaned_name = re.sub(r'[«»]', '', cleaned_name)
