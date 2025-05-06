@@ -18,7 +18,7 @@ def clean_company_name(company_name: str) -> str:
                     lowercase=True,  # Приводим к нижнему регистру
                     numbers=True,  # Удаляем все цифры 
                     punct=True,  # Удаляем все знаки препинания
-                    reg=r'\b(ООО|ОДО|СОО|КФХ|НКО|ФСК|УК|МУП|ФГБУ|ОАО|АО|ЗАО|ПФ|ПАО|L.L.C|ИП|ТОО|Inc.|GmbH|S.A.|S.R.L.|PLC|SAS|LLC|NV|Ltd|Co.)\b',  # Удаляем части текста по regex
+                    reg=r'\b(ООО|ОАО|АО|ЗАО|ПФ|ПАО|L.L.C|ИП|ТОО|Ltd|Co.)\b',  # Удаляем части текста по regex
                     )
     # Удаляем специфические кавычки
     cleaned_name = re.sub(r'[«»]', '', cleaned_name)
@@ -33,8 +33,9 @@ df_KA['cleaned'] = df_KA['Контрагент'].apply(clean_company_name)
 
 # Функция для нахождения совпадений
 def find_matches(cleaned_company: str) -> List[str]:
-    matches = process.extract(cleaned_company, df_KA['cleaned'], limit=None, scorer=fuzz.ratio)
-    return [df_KA['Контрагент'][index] for _, score, index in matches if score > 90]
+    matches: List[Tuple[str, int, int]] = process.extract(cleaned_company, df_KA['cleaned'], limit=None, scorer=fuzz.ratio)
+    result: List[str] = [df_KA['Контрагент'][index] for _, score, index in matches if score > 90]
+    return result 
 
 # Применяем функцию для нахождения совпадений
 df_GAP['matches'] = df_GAP['cleaned'].apply(find_matches)
