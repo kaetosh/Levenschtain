@@ -45,9 +45,6 @@ for index, row in df_GAP.iterrows():
     if row['matches']:  # добавляем только если есть совпадения
         my_dict[row["Компания"]] = row['matches']
 
-# Печатаем результаты
-for cleaned_name, original_names in my_dict.items():
-    print(cleaned_name)
-    for original_name in original_names:
-        print(f'            {original_name}')
-    print()
+df_GAP = df_GAP[df_GAP['matches'].apply(lambda x: x != [])]
+df_GAP.loc[:, 'matches'] = df_GAP['matches'].apply(lambda x: ', '.join(x))
+df_GAP[['Компания', 'matches']].to_excel('3.xlsx', index=False)
