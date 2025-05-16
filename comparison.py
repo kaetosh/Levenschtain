@@ -43,6 +43,9 @@ def create_file_matches() -> None:
     df_output = pd.DataFrame(df_data_a['data1'])
 
     df_output.to_excel('11.xlsx')
+    # Применяем функцию для нахождения совпадений с прогресс-баром
+    # tqdm.pandas(desc="Поиск совпадений")  # Устанавливаем описание для прогресс-бара
+    # df_GAP['matches'] = df_GAP['cleaned'].progress_apply(find_matches)
 
     df_output['Совпадения'] = df_data_a['cleaned'].apply(find_matches, df_data_b=df_data_b)
     df_output = df_output[df_output['Совпадения'].apply(lambda x: x != [])]
