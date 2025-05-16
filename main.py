@@ -1,43 +1,118 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Fri May 16 09:59:06 2025
+
+@author: a.karabedyan
+"""
+
 import pandas as pd
-from fuzzywuzzy import process, fuzz
-from cleantext import clean
-import re
-from typing import List, Tuple
+import os
+import asyncio
 
-# Чтение данных из Excel
-df_KA: pd.DataFrame = pd.read_excel('1.xlsx') # список контрагентов
-df_GAP: pd.DataFrame = pd.read_excel('2.xlsx') # список компаний группы
+from textual.app import App, ComposeResult
+from textual.widgets import Header, Footer, Static, LoadingIndicator
+from textual.reactive import reactive
+from comparison import create_file_matches
 
-# Функция для очистки названия компании
-def clean_company_name(company_name: str) -> str:
-    cleaned_name: str = clean(company_name,
-                    clean_all=True,  # Выполняем все операции очистки
-                    extra_spaces=True,  # Удаляем лишние пробелы 
-                    stemming=True,  # Стеммим слова
-                    stopwords=True,  # Удаляем стоп-слова
-                    stp_lang='russian', # Язык стоп-слов
-                    lowercase=True,  # Приводим к нижнему регистру
-                    #numbers=True,  # Удаляем все цифры
-                    punct=True,  # Удаляем все знаки препинания
-                    reg=r'\b(ООО|ОАО|АО|ЗАО|ПФ|ПАО|L.L.C|ИП|ТОО|Ltd|Co.НП|СО|КП|ФК|ГК|ЗАО|ОАО|ПАО|ИП|ТОО|LLP|PLC|S.A.|S.R.L.|GmbH|B.V.|Inc.|Corp.|S.p.A.|Pty Ltd|SAS|N.V.)\b',  # Удаляем части текста по regex
-                    )
-    # Удаляем специфические кавычки
-    cleaned_name = re.sub(r'[«»]', '', cleaned_name)
-    return cleaned_name
+from data_text import (correct_columns,
+                       NAME_APP,
+                       NAME_DATA_FILE,
+                       NAME_OUTPUT_FILE,
+                       SUB_TITLE_APP,
+                       EXAMPLE,
+                       TEXT_INTRODUCTION,
+                       TEXT_CREATE_DATACOMPARISON_FILE,
+                       TEXT_CREATE_FUZZYMAPPINGRESULT_FILE,
+                       TEXT_MISSING_COL,
+                       TEXT_MISSING_DATA_COL,
+                       TEXT_END,
+                       TEXT_ERR_CREATE_FUZZYMAPPINGRESULT_FILE,
+                       TEXT_DATACOMPARISON_FILE_NOT_FIND,
+                       TEXT_APP_EXCEL_NOT_FIND)
 
-# Очищаем названия компаний из обеих DataFrame
-df_GAP['cleaned'] = df_GAP['Компания'].apply(clean_company_name)
-df_KA['cleaned'] = df_KA['Контрагент'].apply(clean_company_name)
+class HeaderApp(App):
+    CSS = """
+    .introduction {
+        height: auto;
+        border: solid green;
+    }
+    .steps {
+        height: auto;
+        border: solid green;
+    }
+    .indicator {
+    dock: bottom;
+        height: auto;
+    }
+    """
 
-# Функция для нахождения совпадений
-def find_matches(cleaned_company: str) -> List[str]:
-    matches: List[Tuple[str, int, int]] = process.extract(cleaned_company, df_KA['cleaned'], limit=None, scorer=fuzz.ratio)
-    result: List[str] = [df_KA['Контрагент'][ind] for _, score, ind in matches if score > 90]
-    return result 
+    BINDINGS = [
+        ("ctrl+r", "open_file", "Открыть data_comparison.xlsx для редактирования"),
+        ("ctrl+d", "open_comparison", "Сформировать и открыть файл с совпадениями"),
+    ]
 
-# Применяем функцию для нахождения совпадений
-df_GAP['matches'] = df_GAP['cleaned'].apply(find_matches)
+    loading_indicator = reactive(None)
 
-df_GAP = df_GAP[df_GAP['matches'].apply(lambda x: x != [])]
-df_GAP = df_GAP.explode('matches')
-df_GAP[['matches','Компания']].to_excel('3.xlsx', index=False)
+    def compose(self) -> ComposeResult:
+        self.loading_indicator = LoadingIndicator(classes='indicator')
+        yield Header(show_clock=True, icon='<>')
+        yield Footer()
+        yield Static(TEXT_INTRODUCTION, classes='introduction')
+        yield Static(TEXT_CREATE_DATACOMPARISON_FILE, id='example', classes='steps')
+        yield self.loading_indicator
+
+    def on_mount(self) -> None:
+        self.title = NAME_APP
+        self.sub_title = SUB_TITLE_APP
+        self.loading_indicator.visible = False
+
+    async def action_open_file(self) -> None:
+        self.loading_indicator.visible = True
+        await asyncio.sleep(2)
+
+        central_widget = self.query_one('#example')
+        central_widget.update(TEXT_CREATE_FUZZYMAPPINGRESULT_FILE)
+
+        if not os.path.isfile(NAME_DATA_FILE):
+            example_file = pd.DataFrame(EXAMPLE)
+            example_file.to_excel(NAME_DATA_FILE, index=False)
+        try:
+            os.startfile(NAME_DATA_FILE)
+        except OSError as e:
+            error_message = TEXT_APP_EXCEL_NOT_FIND.format(error_app_xls=e, NAME_DATA_FILE=NAME_DATA_FILE)
+            central_widget.update(error_message)
+        self.loading_indicator.visible = False
+
+    async def action_open_comparison(self) -> None:
+        self.loading_indicator.visible = True
+        await asyncio.sleep(2)
+
+        central_widget = self.query_one('#example')
+
+        try:
+            df = pd.read_excel(NAME_DATA_FILE)
+            if set(correct_columns) != set(df.columns):
+                missing_columns = set(correct_columns) - set(df.columns)
+                missing_columns_str = ', '.join(missing_columns)
+                error_message = TEXT_MISSING_COL.format(missing_columns_str=missing_columns_str)
+                self.query_one('#example').update(error_message)
+            elif df.iloc[0].isnull().any():
+                null_columns = df.iloc[0].isnull()
+                missing_columns = null_columns[null_columns].index.tolist()
+                missing_columns_str = ', '.join(missing_columns)
+                error_message = TEXT_MISSING_DATA_COL.format(missing_columns_str=missing_columns_str)
+                self.query_one('#example').update(error_message)
+            else:
+                create_file_matches()
+                if os.path.isfile(NAME_OUTPUT_FILE):
+                    os.startfile(f'file://{os.path.abspath(NAME_OUTPUT_FILE)}')
+                    central_widget.update(TEXT_END)
+                else:
+                    self.query_one('#example').update(TEXT_ERR_CREATE_FUZZYMAPPINGRESULT_FILE)
+        except FileNotFoundError:
+            self.query_one('#example').update(TEXT_DATACOMPARISON_FILE_NOT_FIND)
+        self.loading_indicator.visible = False
+
+if __name__ == "__main__":
+    app = HeaderApp()
+    app.run()
