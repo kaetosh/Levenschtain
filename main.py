@@ -9,9 +9,15 @@ import pandas as pd
 import os
 import asyncio
 
+from fuzzywuzzy import process, fuzz
+from cleantext import clean
+import re
+from typing import List, Tuple
+
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, Static, LoadingIndicator
+from textual.widgets import Header, Footer, Static, LoadingIndicator, ProgressBar
 from textual.reactive import reactive
+from textual import work
 from comparison import create_file_matches
 
 from data_text import (correct_columns,
@@ -60,16 +66,18 @@ class HeaderApp(App):
         yield Static(TEXT_INTRODUCTION, classes='introduction')
         yield Static(TEXT_CREATE_DATACOMPARISON_FILE, id='example', classes='steps')
         yield self.loading_indicator
+        yield ProgressBar()
 
     def on_mount(self) -> None:
         self.title = NAME_APP
         self.sub_title = SUB_TITLE_APP
+        self.query_one(ProgressBar).visible = False
         self.loading_indicator.visible = False
 
-    async def action_open_file(self) -> None:
-        self.loading_indicator.visible = True
-        await asyncio.sleep(2)
 
+    @work(thread=True)
+    def action_open_file(self) -> None:
+        self.loading_indicator.visible = True
         central_widget = self.query_one('#example')
         central_widget.update(TEXT_CREATE_FUZZYMAPPINGRESULT_FILE)
 
@@ -79,13 +87,14 @@ class HeaderApp(App):
         try:
             os.startfile(NAME_DATA_FILE)
         except OSError as e:
-            error_message = TEXT_APP_EXCEL_NOT_FIND.format(error_app_xls=e, NAME_DATA_FILE=NAME_DATA_FILE)
+            error_message = TEXT_APP_EXCEL_NOT_FIND.format(error_app_xls=e,
+                                                           NAME_DATA_FILE=NAME_DATA_FILE)
             central_widget.update(error_message)
         self.loading_indicator.visible = False
 
-    async def action_open_comparison(self) -> None:
+    @work(thread=True)
+    def action_open_comparison(self) -> None:
         self.loading_indicator.visible = True
-        await asyncio.sleep(2)
 
         central_widget = self.query_one('#example')
 
@@ -94,16 +103,24 @@ class HeaderApp(App):
             if set(correct_columns) != set(df.columns):
                 missing_columns = set(correct_columns) - set(df.columns)
                 missing_columns_str = ', '.join(missing_columns)
-                error_message = TEXT_MISSING_COL.format(missing_columns_str=missing_columns_str)
+                error_message = TEXT_MISSING_COL.format(name_data_file=NAME_DATA_FILE,
+                                                        missing_columns_str=missing_columns_str)
                 self.query_one('#example').update(error_message)
             elif df.iloc[0].isnull().any():
                 null_columns = df.iloc[0].isnull()
                 missing_columns = null_columns[null_columns].index.tolist()
                 missing_columns_str = ', '.join(missing_columns)
-                error_message = TEXT_MISSING_DATA_COL.format(missing_columns_str=missing_columns_str)
+                error_message = TEXT_MISSING_DATA_COL.format(name_data_file=NAME_DATA_FILE,
+                                                             missing_columns_str=missing_columns_str)
                 self.query_one('#example').update(error_message)
             else:
-                create_file_matches()
+                self.query_one(ProgressBar).update(total=100)
+                self.query_one(ProgressBar).visible = True
+                self.query_one('#example').update('Ожидайте, идет поиск совпадений')
+
+                create_file_matches(self.query_one(ProgressBar))
+
+                self.query_one(ProgressBar).visible = False
                 if os.path.isfile(NAME_OUTPUT_FILE):
                     os.startfile(f'file://{os.path.abspath(NAME_OUTPUT_FILE)}')
                     central_widget.update(TEXT_END)

@@ -4,6 +4,7 @@ from cleantext import clean
 import re
 from typing import List, Tuple
 from data_text import NAME_DATA_FILE, NAME_OUTPUT_FILE
+from textual.widgets import ProgressBar
 
 
 
@@ -25,29 +26,36 @@ def clean_company_name(company_name: str) -> str:
     return cleaned_name
 
 # Функция для нахождения совпадений
-def find_matches(cleaned_company: str, df_data_b: pd.DataFrame) -> List[str]:
+def find_matches(cleaned_company: str, df_data_b: pd.DataFrame, pr_bar: ProgressBar, index: int, total_row: int) -> List[str]:
+    percentage = (index / total_row) * 100
+    pr_bar.update(progress=percentage)
     matches: List[Tuple[str, int, int]] = process.extract(cleaned_company, df_data_b['cleaned'], limit=None, scorer=fuzz.ratio)
     result: List[str] = [df_data_b['data2'][ind] for _, score, ind in matches if score > 90]
     return result
 
 # Основная функция для создания файла совпадений
-def create_file_matches() -> None:
+def create_file_matches(pr_bar: ProgressBar) -> None:
     df_data: pd.DataFrame = pd.read_excel(NAME_DATA_FILE)
+
+    # разделим данные на два отдельных столбца (датафрейма)
     df_data_a = pd.DataFrame(df_data['data1'].dropna().astype(str))
     df_data_b = pd.DataFrame(df_data['data2'].dropna().astype(str))
 
+    # удалим дубликаты строк
+    df_data_a = df_data_a.drop_duplicates()
+    df_data_b = df_data_b.drop_duplicates()
 
+    # подчистим данные (стемминг, лишние пробелы, знаки препинания и т.д.)
     df_data_a['cleaned'] = df_data_a['data1'].apply(clean_company_name)
     df_data_b['cleaned'] = df_data_b['data2'].apply(clean_company_name)
 
+    # подготовим выводной датафрейм
     df_output = pd.DataFrame(df_data_a['data1'])
 
-    df_output.to_excel('11.xlsx')
-    # Применяем функцию для нахождения совпадений с прогресс-баром
-    # tqdm.pandas(desc="Поиск совпадений")  # Устанавливаем описание для прогресс-бара
-    # df_GAP['matches'] = df_GAP['cleaned'].progress_apply(find_matches)
-
-    df_output['Совпадения'] = df_data_a['cleaned'].apply(find_matches, df_data_b=df_data_b)
-    df_output = df_output[df_output['Совпадения'].apply(lambda x: x != [])]
-    df_output = df_output.explode('Совпадения')
-    df_output[['data1', 'Совпадения']].to_excel(NAME_OUTPUT_FILE, index=False)
+    # находим совпадения
+    total_row = len(df_data_a)
+    df_output['data2'] = df_data_a['cleaned'].apply(lambda x: find_matches(x, df_data_b, pr_bar, df_data_a.index[df_data_a['cleaned'] == x][0], total_row))
+    df_output = df_output[df_output['data2'].apply(lambda x: x != [])]
+    df_output = df_output.explode('data2')
+    df_output = df_output.drop_duplicates(subset=['data1', 'data2'])
+    df_output[['data1', 'data2']].to_excel(NAME_OUTPUT_FILE, index=False)
