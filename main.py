@@ -18,6 +18,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Static, LoadingIndicator, ProgressBar
 from textual.reactive import reactive
 from textual import work
+from textual.containers import Middle, Center
 from comparison import create_file_matches
 
 from data_text import (correct_columns,
@@ -29,6 +30,7 @@ from data_text import (correct_columns,
                        TEXT_INTRODUCTION,
                        TEXT_CREATE_DATACOMPARISON_FILE,
                        TEXT_CREATE_FUZZYMAPPINGRESULT_FILE,
+                       TEXT_WAITING_FUZZYMAPPINGRESULT_FILE,
                        TEXT_MISSING_COL,
                        TEXT_MISSING_DATA_COL,
                        TEXT_END,
@@ -47,8 +49,12 @@ class HeaderApp(App):
         border: solid green;
     }
     .indicator {
-    dock: bottom;
+        dock: bottom;
         height: auto;
+    }
+    ProgressBar {
+        padding-left: 3;
+
     }
     """
 
@@ -66,7 +72,9 @@ class HeaderApp(App):
         yield Static(TEXT_INTRODUCTION, classes='introduction')
         yield Static(TEXT_CREATE_DATACOMPARISON_FILE, id='example', classes='steps')
         yield self.loading_indicator
-        yield ProgressBar()
+        with Middle():
+            with Center():
+                yield ProgressBar(show_eta=False)
 
     def on_mount(self) -> None:
         self.title = NAME_APP
@@ -116,11 +124,12 @@ class HeaderApp(App):
             else:
                 self.query_one(ProgressBar).update(total=100)
                 self.query_one(ProgressBar).visible = True
-                self.query_one('#example').update('Ожидайте, идет поиск совпадений')
+                self.query_one('#example').update(TEXT_WAITING_FUZZYMAPPINGRESULT_FILE)
 
                 create_file_matches(self.query_one(ProgressBar))
 
                 self.query_one(ProgressBar).visible = False
+                self.query_one(ProgressBar).update(progress=0)
                 if os.path.isfile(NAME_OUTPUT_FILE):
                     os.startfile(f'file://{os.path.abspath(NAME_OUTPUT_FILE)}')
                     central_widget.update(TEXT_END)
