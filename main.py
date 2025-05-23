@@ -7,20 +7,14 @@ Created on Fri May 16 09:59:06 2025
 
 import pandas as pd
 import os
-import asyncio
 
-from fuzzywuzzy import process, fuzz
-from cleantext import clean
-import re
-from typing import List, Tuple
-
-from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, Static, LoadingIndicator, ProgressBar
-from textual.reactive import reactive
 from textual import work
+from textual.app import App, ComposeResult
+from textual.containers import Horizontal
+from textual.widgets import Header, Footer, Static, LoadingIndicator, ProgressBar, MaskedInput
 from textual.containers import Middle, Center
-from comparison import create_file_matches
 
+from comparison import create_file_matches
 from data_text import (correct_columns,
                        NAME_APP,
                        NAME_DATA_FILE,
@@ -35,43 +29,53 @@ from data_text import (correct_columns,
                        TEXT_MISSING_DATA_COL,
                        TEXT_END,
                        TEXT_ERR_CREATE_FUZZYMAPPINGRESULT_FILE,
+                       TEXT_ERR_VALID_SIMILARITI_SCORE,
                        TEXT_DATACOMPARISON_FILE_NOT_FIND,
-                       TEXT_APP_EXCEL_NOT_FIND)
+                       TEXT_ERR_PERMISSION,
+                       TEXT_APP_EXCEL_NOT_FIND,
+                       TEXT_UNKNOW_ERR)
 
-class HeaderApp(App):
+class FuzzyMatchToolApp(App):
     CSS = """
     .introduction {
         height: auto;
-        border: solid green;
+        border: solid #0087d7;
     }
-    .steps {
+    .steps_l {
         height: auto;
-        border: solid green;
+        width: 9fr;
     }
-    .indicator {
+    .steps_r {
+        height: 100%;
+        border: solid #0087d7;
+        width: 1fr;
+    }
+    Horizontal {
+        height: auto;
+        border: solid #0087d7;
+    }
+    LoadingIndicator {
         dock: bottom;
-        height: auto;
+        height: 10%;
     }
     ProgressBar {
         padding-left: 3;
-
     }
     """
 
     BINDINGS = [
-        ("ctrl+r", "open_file", "Открыть data_comparison.xlsx для редактирования"),
-        ("ctrl+d", "open_comparison", "Сформировать и открыть файл с совпадениями"),
+        ("ctrl+r", "open_file", "Открыть файл с исходными данными для редактирования"),
+        ("ctrl+m", "open_comparison", "Сформировать и открыть файл с совпадениями"),
     ]
 
-    loading_indicator = reactive(None)
-
     def compose(self) -> ComposeResult:
-        self.loading_indicator = LoadingIndicator(classes='indicator')
         yield Header(show_clock=True, icon='<>')
-        yield Footer()
         yield Static(TEXT_INTRODUCTION, classes='introduction')
-        yield Static(TEXT_CREATE_DATACOMPARISON_FILE, id='example', classes='steps')
-        yield self.loading_indicator
+        yield Horizontal(
+                Static(TEXT_CREATE_DATACOMPARISON_FILE, classes='steps_l'),
+                MaskedInput(template="99", value="90", classes='steps_r'), id='example')
+        yield Footer()
+        yield LoadingIndicator()
         with Middle():
             with Center():
                 yield ProgressBar(show_eta=False)
@@ -80,14 +84,18 @@ class HeaderApp(App):
         self.title = NAME_APP
         self.sub_title = SUB_TITLE_APP
         self.query_one(ProgressBar).visible = False
-        self.loading_indicator.visible = False
+        self.query_one(LoadingIndicator).visible = False
 
-
+    '''
+    Открывает excel-файл, в два столбца которого пользователь вставляет текстовые
+    данные для сравнения между собой. Файл будет содердать образец для заполнения.
+    Файл формируется из датафрейма pandas, который в свою очередь формируется из
+    словаря EXAMPLE.
+    '''
     @work(thread=True)
     def action_open_file(self) -> None:
-        self.loading_indicator.visible = True
-        central_widget = self.query_one('#example')
-        central_widget.update(TEXT_CREATE_FUZZYMAPPINGRESULT_FILE)
+        self.query_one(LoadingIndicator).visible = True
+        self.query_one('.steps_l').update(TEXT_CREATE_FUZZYMAPPINGRESULT_FILE)
 
         if not os.path.isfile(NAME_DATA_FILE):
             example_file = pd.DataFrame(EXAMPLE)
@@ -97,48 +105,76 @@ class HeaderApp(App):
         except OSError as e:
             error_message = TEXT_APP_EXCEL_NOT_FIND.format(error_app_xls=e,
                                                            NAME_DATA_FILE=NAME_DATA_FILE)
-            central_widget.update(error_message)
-        self.loading_indicator.visible = False
+            self.query_one('.steps_l').update(error_message)
+        self.query_one(LoadingIndicator).visible = False
+
+
+    '''
+    Формирует с помощью функции create_file_matches и открывает excel-файл,
+    содержащий похожие строки, соответствующие уровню схожести, установленному
+    пользователем (90% по умолчанию).
+    '''
 
     @work(thread=True)
     def action_open_comparison(self) -> None:
-        self.loading_indicator.visible = True
-
-        central_widget = self.query_one('#example')
-
+        self.query_one(LoadingIndicator).visible = True
+        self.query_one(MaskedInput).visible = False
         try:
             df = pd.read_excel(NAME_DATA_FILE)
-            if set(correct_columns) != set(df.columns):
+
+            # Проверка наличия необходимых столбцов
+            if not set(correct_columns).issubset(set(df.columns)):
                 missing_columns = set(correct_columns) - set(df.columns)
                 missing_columns_str = ', '.join(missing_columns)
                 error_message = TEXT_MISSING_COL.format(name_data_file=NAME_DATA_FILE,
                                                         missing_columns_str=missing_columns_str)
-                self.query_one('#example').update(error_message)
+                self.query_one('.steps_l').update(error_message)
+            # Проверка заполненности первой строки
             elif df.iloc[0].isnull().any():
                 null_columns = df.iloc[0].isnull()
                 missing_columns = null_columns[null_columns].index.tolist()
                 missing_columns_str = ', '.join(missing_columns)
                 error_message = TEXT_MISSING_DATA_COL.format(name_data_file=NAME_DATA_FILE,
                                                              missing_columns_str=missing_columns_str)
-                self.query_one('#example').update(error_message)
+                self.query_one('.steps_l').update(error_message)
             else:
-                self.query_one(ProgressBar).update(total=100)
-                self.query_one(ProgressBar).visible = True
-                self.query_one('#example').update(TEXT_WAITING_FUZZYMAPPINGRESULT_FILE)
+                try:
+                    similarity_score = int(self.query_one(MaskedInput).value)
+                    if 10 <= similarity_score <= 99:
+                        self.query_one(ProgressBar).update(total=100)
+                        self.query_one(ProgressBar).visible = True
+                        self.query_one('.steps_l').update(TEXT_WAITING_FUZZYMAPPINGRESULT_FILE)
 
-                create_file_matches(self.query_one(ProgressBar))
+                        create_file_matches(self.query_one(ProgressBar), similarity_score)
 
-                self.query_one(ProgressBar).visible = False
-                self.query_one(ProgressBar).update(progress=0)
-                if os.path.isfile(NAME_OUTPUT_FILE):
-                    os.startfile(f'file://{os.path.abspath(NAME_OUTPUT_FILE)}')
-                    central_widget.update(TEXT_END)
-                else:
-                    self.query_one('#example').update(TEXT_ERR_CREATE_FUZZYMAPPINGRESULT_FILE)
+                        self.query_one(ProgressBar).visible = False
+                        self.query_one(ProgressBar).update(progress=0)
+
+                        if os.path.isfile(NAME_OUTPUT_FILE):
+                            os.startfile(os.path.abspath(NAME_OUTPUT_FILE))  # Убедитесь, что Вы на Windows
+                            self.query_one('.steps_l').update(TEXT_END)
+                        else:
+                            self.query_one('.steps_l').update(TEXT_ERR_CREATE_FUZZYMAPPINGRESULT_FILE)
+                    else:
+                        self.query_one('.steps_l').update(TEXT_ERR_VALID_SIMILARITI_SCORE)
+                except ValueError:
+                    self.query_one('.steps_l').update(TEXT_ERR_VALID_SIMILARITI_SCORE)
+                except PermissionError:
+                    self.query_one('.steps_l').update(TEXT_ERR_PERMISSION)
+                    self.query_one(ProgressBar).visible = False
+                    self.query_one(ProgressBar).update(progress=0)
+                except Exception as e:
+                    self.query_one('.steps_l').update(TEXT_UNKNOW_ERR.format(text_err=e))
         except FileNotFoundError:
-            self.query_one('#example').update(TEXT_DATACOMPARISON_FILE_NOT_FIND)
-        self.loading_indicator.visible = False
+            self.query_one('.steps_l').update(TEXT_DATACOMPARISON_FILE_NOT_FIND)
+        except ValueError as e:
+        # except Exception as e:
+            self.query_one('.steps_l').update(TEXT_UNKNOW_ERR.format(text_err=e))
+        finally:
+            self.query_one(LoadingIndicator).visible = False
+            self.query_one(MaskedInput).visible = True
+            self.query_one(ProgressBar).visible = False
 
 if __name__ == "__main__":
-    app = HeaderApp()
+    app = FuzzyMatchToolApp()
     app.run()

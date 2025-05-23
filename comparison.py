@@ -26,15 +26,15 @@ def clean_company_name(company_name: str) -> str:
     return cleaned_name
 
 # Функция для нахождения совпадений
-def find_matches(cleaned_company: str, df_data_b: pd.DataFrame, pr_bar: ProgressBar, index: int, total_row: int) -> List[str]:
+def find_matches(cleaned_company: str, df_data_b: pd.DataFrame, pr_bar: ProgressBar, index: int, total_row: int, similarity_criterion: int) -> List[str]:
     percentage = (index / total_row) * 100
     pr_bar.update(progress=percentage)
     matches: List[Tuple[str, int, int]] = process.extract(cleaned_company, df_data_b['cleaned'], limit=None, scorer=fuzz.ratio)
-    result: List[str] = [df_data_b['data2'][ind] for _, score, ind in matches if score > 90]
+    result: List[str] = [df_data_b['data2'][ind] for _, score, ind in matches if score >= similarity_criterion]
     return result
 
 # Основная функция для создания файла совпадений
-def create_file_matches(pr_bar: ProgressBar) -> None:
+def create_file_matches(pr_bar: ProgressBar, similarity_criterion: int) -> None:
     df_data: pd.DataFrame = pd.read_excel(NAME_DATA_FILE)
 
     # разделим данные на два отдельных столбца (датафрейма)
@@ -54,8 +54,14 @@ def create_file_matches(pr_bar: ProgressBar) -> None:
 
     # находим совпадения
     total_row = len(df_data_a)
-    df_output['data2'] = df_data_a['cleaned'].apply(lambda x: find_matches(x, df_data_b, pr_bar, df_data_a.index[df_data_a['cleaned'] == x][0], total_row))
+    df_output['data2'] = df_data_a['cleaned'].apply(lambda x: find_matches(x,
+                                                                           df_data_b,
+                                                                           pr_bar,
+                                                                           df_data_a.index[df_data_a['cleaned'] == x][0],
+                                                                           total_row,
+                                                                           similarity_criterion))
     df_output = df_output[df_output['data2'].apply(lambda x: x != [])]
     df_output = df_output.explode('data2')
     df_output = df_output.drop_duplicates(subset=['data1', 'data2'])
     df_output[['data1', 'data2']].to_excel(NAME_OUTPUT_FILE, index=False)
+
