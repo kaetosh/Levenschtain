@@ -30,7 +30,7 @@
 ```bash
 git clone https://github.com/kaetosh/Gantt.git
 ```
-2. Установите необходимые библиотеки:
+2. Установите необходимые библиотеки (файл requirements.txt будет чуток позже):
 ```bash
 pip install -r requirements.txt
 ```
