@@ -23,7 +23,9 @@ def clean_company_name(company_name: str) -> str:
                     )
     # Удаляем специфические кавычки
     cleaned_name = re.sub(r'[«»]', '', cleaned_name)
-    return cleaned_name
+    words = sorted(cleaned_name.split())
+    normalized_words = " ".join(words)
+    return normalized_words
 
 # Функция для нахождения совпадений
 def find_matches(cleaned_company: str, df_data_b: pd.DataFrame, pr_bar: ProgressBar, index: int, total_row: int, similarity_criterion: int) -> List[str]:
