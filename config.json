@@ -1,0 +1,15 @@
+{
+    "cleaning_options": {
+        "use_stemming_or_lemmatization": 1,
+        "remove_legal_forms": 0,
+        "remove_digits": 0,
+        "remove_punctuation": 1,
+        "remove_stopwords": 1,
+        "sort_words": 1
+    },
+    "comparison_options": {
+        "use_token_sort_ratio": 1,
+        "similarity_score": "90"
+    },
+    "legal_forms_regex": "(?i)\\b(ООО|ОАО|АО|ЗАО|ПФ|ПАО|L.L.C|ИП|ТОО|Ltd|Co.НП|СО|КП|ФК|ГК|ЗАО|ОАО|ПАО|ИП|ТОО|LLP|PLC|S.A.|S.R.L.|GmbH|B.V.|Inc.|Corp.|S.p.A.|Pty Ltd|SAS|N.V.)\\b"
+}

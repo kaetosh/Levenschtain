@@ -1,69 +1,118 @@
+import os
 import pandas as pd
-from fuzzywuzzy import process, fuzz
-from cleantext import clean
-import re
-from typing import List, Tuple
-from data_text import NAME_DATA_FILE, NAME_OUTPUT_FILE
-from textual.widgets import ProgressBar
+from rapidfuzz import process, fuzz, utils
+from typing import Dict
+from text import NAME_DATA_FILE, NAME_OUTPUT_FILE
+from collections import defaultdict
 
+from custom_errors import Sheet_too_large_Error
+from utils import load_config, clean_text_optimized # Импортируем наши новые функции
 
+# Кэширование результатов очистки
+_cleaning_cache: Dict[str, str] = {}
 
-# Функция для очистки названия компании
 def clean_company_name(company_name: str) -> str:
-    cleaned_name: str = clean(company_name,
-                    clean_all=True,  # Выполняем все операции очистки
-                    extra_spaces=True,  # Удаляем лишние пробелы
-                    stemming=True,  # Стеммим слова
-                    stopwords=True,  # Удаляем стоп-слова
-                    stp_lang='russian', # Язык стоп-слов
-                    lowercase=True,  # Приводим к нижнему регистру
-                    #numbers=True,  # Удаляем все цифры
-                    punct=True,  # Удаляем все знаки препинания
-                    reg=r'(?i)\b(ООО|ОАО|АО|ЗАО|ПФ|ПАО|L.L.C|ИП|ТОО|Ltd|Co.НП|СО|КП|ФК|ГК|ЗАО|ОАО|ПАО|ИП|ТОО|LLP|PLC|S.A.|S.R.L.|GmbH|B.V.|Inc.|Corp.|S.p.A.|Pty Ltd|SAS|N.V.)\b' # Удаляем части текста по regex
-                    )
-    # Удаляем специфические кавычки
-    cleaned_name = re.sub(r'[«»]', '', cleaned_name)
-    words = sorted(cleaned_name.split())
-    normalized_words = " ".join(words)
+    """
+    Оптимизированная функция очистки названия компании с использованием 
+    опциональных параметров из конфигурационного файла.
+    """
+    if company_name in _cleaning_cache:
+        return _cleaning_cache[company_name]
+    
+    # Загружаем конфигурацию
+    config = load_config()
+    
+    # Используем оптимизированную функцию очистки
+    normalized_words: str = clean_text_optimized(company_name, config)
+    
+    _cleaning_cache[company_name] = normalized_words
     return normalized_words
 
-# Функция для нахождения совпадений
-def find_matches(cleaned_company: str, df_data_b: pd.DataFrame, pr_bar: ProgressBar, index: int, total_row: int, similarity_criterion: int) -> List[str]:
-    percentage = (index / total_row) * 100
-    pr_bar.update(progress=percentage)
-    matches: List[Tuple[str, int, int]] = process.extract(cleaned_company, df_data_b['cleaned'], limit=None, scorer=fuzz.ratio)
-    result: List[str] = [df_data_b['data2'][ind] for _, score, ind in matches if score >= similarity_criterion]
-    return result
-
-# Основная функция для создания файла совпадений
-def create_file_matches(pr_bar: ProgressBar, similarity_criterion: int) -> None:
-    df_data: pd.DataFrame = pd.read_excel(NAME_DATA_FILE)
-
-    # разделим данные на два отдельных столбца (датафрейма)
-    df_data_a = pd.DataFrame(df_data['data1'].dropna().astype(str))
-    df_data_b = pd.DataFrame(df_data['data2'].dropna().astype(str))
-
-    # удалим дубликаты строк
-    df_data_a = df_data_a.drop_duplicates()
-    df_data_b = df_data_b.drop_duplicates()
-
-    # подчистим данные (стемминг, лишние пробелы, знаки препинания и т.д.)
+def create_file_matches(similarity_criterion: int) -> None:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(script_dir, "working_files", NAME_DATA_FILE)
+    
+    df_data: pd.DataFrame = pd.read_excel(file_path)
+    # Оптимизация: работа с данными без копирования
+    df_data_a = df_data[['data1']].dropna().drop_duplicates()
+    df_data_b = df_data[['data2']].dropna().drop_duplicates()
+    
+    # Векторизованная очистка данных
+    df_data_a = df_data_a.copy()
+    df_data_b = df_data_b.copy()
+    
+    # Очистка данных с использованием новой функции
     df_data_a['cleaned'] = df_data_a['data1'].apply(clean_company_name)
     df_data_b['cleaned'] = df_data_b['data2'].apply(clean_company_name)
+    
+    # Создаем словарь для быстрого поиска
+    b_cleaned_to_original = defaultdict(list)
+    for idx, row in df_data_b.iterrows():
+        b_cleaned_to_original[row['cleaned']].append(row['data2'])
 
-    # подготовим выводной датафрейм
-    df_output = pd.DataFrame(df_data_a['data1'])
+    b_cleaned_list = list(b_cleaned_to_original.keys())
+    
+    # Предварительная обработка для rapidfuzz
+    processed_b = [utils.default_process(x) for x in b_cleaned_list]
+    
+    results = []
+    
+    # Загружаем конфигурацию для выбора метрики
+    config = load_config()
+    use_token_sort = config.get("comparison_options", {}).get("use_token_sort_ratio", 0) == 1
+    
+    # Выбираем скорер
+    scorer = fuzz.token_sort_ratio if use_token_sort else fuzz.ratio
+    
+    for idx, row in enumerate(df_data_a.itertuples(), 1):
+        cleaned_a = row.cleaned
+        processed_a = utils.default_process(cleaned_a)
+        
+        # Используем rapidfuzz с выбранным скорером
+        matches = process.extract(
+            processed_a, 
+            processed_b, 
+            scorer=scorer, # Используем выбранный скорер
+            score_cutoff=similarity_criterion,
+            limit=50  # Ограничиваем количество результатов
+        )
+        
+        matched_strings = []
+        for match_text, score, match_idx in matches:
+            if score >= similarity_criterion:
+                original_strings = b_cleaned_to_original[b_cleaned_list[match_idx]]
+                matched_strings.extend(original_strings)
+        
+        if matched_strings:
+            results.append({
+                'data1': row.data1,
+                'data2': matched_strings
+            })
+        
+    # Создаем финальный DataFrame одним действием
+    if results:
+        df_output = pd.DataFrame([
+            {'data1': result['data1'], 'data2': data2} 
+            for result in results 
+            for data2 in result['data2']
+        ]).drop_duplicates()
+        
+        file_path = os.path.join(script_dir, "working_files", NAME_OUTPUT_FILE)
+        try:
+            df_output.to_excel(file_path, index=False)
+        except ValueError:
+            # pr_bar.update(progress=0, total=None)
+            # label_progress_bar.update(content = '')
+            raise Sheet_too_large_Error()
+        except PermissionError:
+            # pr_bar.update(progress=0, total=None)
+            # label_progress_bar.update(content = '')
+            raise PermissionError()
+            
+    else:
+        # Создаем пустой файл если нет результатов
+        file_path = os.path.join(script_dir, "working_files", NAME_OUTPUT_FILE)
+        pd.DataFrame(columns=['data1', 'data2']).to_excel(file_path, index=False)
 
-    # находим совпадения
-    total_row = len(df_data_a)
-    df_output['data2'] = df_data_a['cleaned'].apply(lambda x: find_matches(x,
-                                                                           df_data_b,
-                                                                           pr_bar,
-                                                                           df_data_a.index[df_data_a['cleaned'] == x][0],
-                                                                           total_row,
-                                                                           similarity_criterion))
-    df_output = df_output[df_output['data2'].apply(lambda x: x != [])]
-    df_output = df_output.explode('data2')
-    df_output = df_output.drop_duplicates(subset=['data1', 'data2'])
-    df_output[['data1', 'data2']].to_excel(NAME_OUTPUT_FILE, index=False)
-
+    # Очищаем кэш после использования
+    _cleaning_cache.clear()

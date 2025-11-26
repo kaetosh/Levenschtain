@@ -1,0 +1,89 @@
+Header {
+  dock: top;
+  content-align: center middle;
+}
+
+#introduction {
+    border: tall $background;
+    content-align: center top;
+    border: solid $accent;
+    width: 100%;
+    height: 19;
+}
+
+#horizontal_progress_bar {
+    align: center bottom;
+    width: 100%;
+    height: 1;
+}
+
+#buttons {
+    align: center middle;
+    layout: grid;
+    grid-size: 3 1;
+    height: 5;
+}
+Button {
+    border: tall $background;
+    width: 100%;
+}
+
+
+
+SetSimilarityLevelScreen {
+        align: center middle;
+    }
+        #container-set-similarity-level-modalscreen {
+           align: center middle;
+           width: 70; 
+           height: 10;
+           border: solid $accent;
+           background: $surface;
+           padding: 1;
+           margin: 1;
+        }
+        
+        #static-set-similarity-level-modalscreen {
+            content-align: center middle;
+        }
+        
+        #horizontal-set-similarity-level-modalscreen {
+           align: center middle; 
+        }
+        
+        #input-set-similarity-level-modalscreen {
+            width: 15%;
+            content-align: center middle;
+        }
+
+
+        #button-set-similarity-level-modalscreen {
+            width: 25%;
+            }
+            
+SettingsScreen {
+        align: center middle;
+    }
+        #container-settings-modal {
+           width: 55; 
+           height: 20;
+           border: solid $accent;
+           background: $surface;
+           padding: 1;
+        }
+       .statics-settings-modal {
+          content-align: left middle;
+          height: 3;
+          width: 80%; 
+       }
+       .switchs-settings-modal {
+           content-align: right middle;
+           width: 20%;
+       }
+       #horizontals-button-settings-modal{
+           align: center bottom;
+           }
+       #button-settings-modal {
+            width: 45%;
+                    }   
+
